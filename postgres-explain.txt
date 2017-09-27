@@ -1,0 +1,45 @@
+ Unique  (cost=1242930.96..1307085.96 rows=1222000 width=240) (actual time=43770.344..45322.318 rows=1407784 loops=1)
+   ->  Sort  (cost=1242930.96..1245985.96 rows=1222000 width=240) (actual time=43770.342..44296.231 rows=1675690 loops=1)
+         Sort Key: saa.tenant, saa.facilityid, saa.itemid, saa.stockareaid, saa.stockareaname, saa.stockareadescription, saa.stockareatypedescription, saa.unitcostinventoryvalue, saa.inventorylevel, saa.parlevel, saa.maxinventory, usage.adu45, usage.awu45, usage.peak45, ((saa.inventorylevel / usage.adu45)), ((saa.inventorylevel / usage.awu45)), (round((((usage.totalquantity45 * iuc.unitcost)))::numeric, 2)), (CASE WHEN ((usage.totalquantity45 = 0) OR (usage.totalquantity45 IS NULL)) THEN 'D'::text WHEN ((round((((usage.totalquantity45 * iuc.unitcost)))::numeric, 2) / (sum(round((((usage.totalquantity45 * iuc.unitcost)))::numeric, 2)) OVER (?))) > 0.8) THEN 'A'::text WHEN ((sum(round((((usage.totalquantity45 * iuc.unitcost)))::numeric, 2)) OVER (?) / (sum(round((((usage.totalquantity45 * iuc.unitcost)))::numeric, 2)) OVER (?))) <= 0.8) THEN 'A'::text WHEN ((sum(round((((usage.totalquantity45 * iuc.unitcost)))::numeric, 2)) OVER (?) / (sum(round((((usage.totalquantity45 * iuc.unitcost)))::numeric, 2)) OVER (?))) <= 0.9) THEN 'B'::text ELSE 'C'::text END), saa.earliestexpirationdttm, (CASE WHEN (criticalmedlist.criticalgcn IS NOT NULL) THEN 'Y'::text ELSE 'N'::text END)
+         Sort Method: external sort  Disk: 242432kB
+         ->  WindowAgg  (cost=752064.80..843714.80 rows=1222000 width=240) (actual time=29397.698..32437.643 rows=1675690 loops=1)
+               ->  Sort  (cost=752064.80..755119.80 rows=1222000 width=180) (actual time=29397.656..29937.386 rows=1675690 loops=1)
+                     Sort Key: saa.tenant, saa.stockareaid, ((usage.totalquantity45 * iuc.unitcost)) DESC
+                     Sort Method: external sort  Disk: 242256kB
+                     ->  WindowAgg  (cost=350184.20..411319.63 rows=1222000 width=180) (actual time=10950.433..19046.169 rows=1675690 loops=1)
+                           ->  Merge Left Join  (cost=350184.20..371604.63 rows=1222000 width=148) (actual time=10950.416..16875.233 rows=1675690 loops=1)
+                                 Merge Cond: ((saa.tenant)::text = (cus.customerabbrv)::text)
+                                 ->  Merge Left Join  (cost=350117.37..365404.88 rows=1222000 width=144) (actual time=10948.554..15824.627 rows=1675690 loops=1)
+                                       Merge Cond: (((saa.tenant)::text = (usage.tenant)::text) AND (saa.stockareaid = usage.stockareaid) AND (saa.facilityid = usage.facilityid) AND (saa.itemid = usage.itemid))
+                                       ->  Sort  (cost=350006.02..353061.02 rows=1222000 width=124) (actual time=10945.456..14608.730 rows=1675690 loops=1)
+                                             Sort Key: saa.tenant, saa.stockareaid, saa.facilityid, saa.itemid
+                                             Sort Method: external merge  Disk: 236096kB
+                                             ->  Hash Left Join  (cost=78.78..67738.85 rows=1222000 width=124) (actual time=1.789..1131.547 rows=1675690 loops=1)
+                                                   Hash Cond: (saa.itemid = ifrm.itemid)
+                                                   ->  Seq Scan on stockareaassignment saa  (cost=0.00..44810.00 rows=1222000 width=120) (actual time=0.005..268.370 rows=1222000 loops=1)
+                                                   ->  Hash  (cost=66.28..66.28 rows=1000 width=8) (actual time=1.775..1.775 rows=1000 loops=1)
+                                                         Buckets: 1024  Batches: 1  Memory Usage: 46kB
+                                                         ->  Hash Left Join  (cost=37.71..66.28 rows=1000 width=8) (actual time=0.829..1.522 rows=1000 loops=1)
+                                                               Hash Cond: (ifrm.gcn = criticalmedlist.criticalgcn)
+                                                               ->  Seq Scan on itemfacilityreadmodel ifrm  (cost=0.00..15.00 rows=1000 width=8) (actual time=0.005..0.214 rows=1000 loops=1)
+                                                               ->  Hash  (cost=29.94..29.94 rows=622 width=4) (actual time=0.813..0.813 rows=622 loops=1)
+                                                                     Buckets: 1024  Batches: 1  Memory Usage: 30kB
+                                                                     ->  HashAggregate  (cost=17.50..23.72 rows=622 width=4) (actual time=0.509..0.643 rows=622 loops=1)
+                                                                           Group Key: criticalmedlist.criticalgcn
+                                                                           ->  Seq Scan on criticalmedlist  (cost=0.00..15.00 rows=1000 width=4) (actual time=0.005..0.214 rows=1000 loops=1)
+                                       ->  Sort  (cost=111.35..113.85 rows=1000 width=53) (actual time=3.090..3.821 rows=1000 loops=1)
+                                             Sort Key: usage.tenant, usage.stockareaid, usage.facilityid, usage.itemid
+                                             Sort Method: quicksort  Memory: 165kB
+                                             ->  Hash Left Join  (cost=33.00..61.52 rows=1000 width=53) (actual time=0.542..1.211 rows=1000 loops=1)
+                                                   Hash Cond: ((usage.itemid = iuc.itemid) AND ((usage.tenant)::text = (iuc.tenant)::text))
+                                                   ->  Seq Scan on dailyusagebystockarea usage  (cost=0.00..21.00 rows=1000 width=49) (actual time=0.013..0.181 rows=1000 loops=1)
+                                                   ->  Hash  (cost=18.00..18.00 rows=1000 width=29) (actual time=0.519..0.519 rows=1000 loops=1)
+                                                         Buckets: 1024  Batches: 1  Memory Usage: 68kB
+                                                         ->  Seq Scan on itemunitcost iuc  (cost=0.00..18.00 rows=1000 width=29) (actual time=0.005..0.221 rows=1000 loops=1)
+                                 ->  Sort  (cost=66.83..69.33 rows=1000 width=21) (actual time=1.853..4.468 rows=9595 loops=1)
+                                       Sort Key: cus.customerabbrv
+                                       Sort Method: quicksort  Memory: 103kB
+                                       ->  Seq Scan on customer cus  (cost=0.00..17.00 rows=1000 width=21) (actual time=0.005..0.209 rows=1000 loops=1)
+ Planning time: 2.010 ms
+ Execution time: 48987.037 ms
+(44 rows)
